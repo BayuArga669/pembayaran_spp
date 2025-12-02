@@ -124,4 +124,25 @@ public class SiswaController {
         }
         return false;
     }
+
+    // Get unique kelas from database
+    public List<String> getUniqueKelas() {
+        List<String> uniqueKelas = new ArrayList<>();
+        String sql = "SELECT DISTINCT kelas FROM siswa ORDER BY kelas";
+
+        try (PreparedStatement stmt = conn.prepareStatement(sql);
+             ResultSet rs = stmt.executeQuery()) {
+
+            while (rs.next()) {
+                String kelas = rs.getString("kelas");
+                if (kelas != null && !kelas.trim().isEmpty()) {
+                    uniqueKelas.add(kelas.trim());
+                }
+            }
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return uniqueKelas;
+    }
 }

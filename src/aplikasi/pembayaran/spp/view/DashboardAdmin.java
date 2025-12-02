@@ -1229,12 +1229,22 @@ public class DashboardAdmin extends JFrame implements ActionListener {
         btnHapusSiswa.setBackground(new Color(231, 76, 60)); // Red color for delete
         btnHapusSiswa.setForeground(Color.WHITE);
         btnHapusSiswa.setBorder(BorderFactory.createEmptyBorder(8, 12, 8, 12));
+
+        JButton btnBuatAkun = new JButton("🔑 Buat Akun Login");
+        btnBuatAkun.setBackground(new Color(155, 89, 182)); // Purple color
+        btnBuatAkun.setForeground(Color.WHITE);
+        btnBuatAkun.setBorder(BorderFactory.createEmptyBorder(8, 12, 8, 12));
+
         siswaActionPanel.add(btnTambahSiswa);
         siswaActionPanel.add(btnEditSiswa);
         siswaActionPanel.add(btnHapusSiswa);
+        siswaActionPanel.add(btnBuatAkun);
 
         // Add action listener for delete button
         btnHapusSiswa.addActionListener(e -> hapusSelectedSiswa());
+
+        // Add action listener for create account button
+        btnBuatAkun.addActionListener(e -> buatAkunLogin());
 
         // ✅ TAMBAH SISWA — mode tambah
         btnTambahSiswa.addActionListener(e -> {
@@ -1252,7 +1262,13 @@ public class DashboardAdmin extends JFrame implements ActionListener {
         JTextField siswaSearchField = new JTextField(15);
         siswaSearchPanel.add(siswaSearchField);
         siswaSearchPanel.add(new JLabel("Kelas:"));
-        JComboBox<String> kelasCombo = new JComboBox<>(new String[]{"Semua", "X", "XI", "XII"});
+        JComboBox<String> kelasCombo = new JComboBox<>();
+        kelasCombo.addItem("Semua");
+        // Populate kelas combo with actual class names from data
+        List<String> uniqueKelas = siswaController.getUniqueKelas();
+        for (String kelas : uniqueKelas) {
+            kelasCombo.addItem(kelas);
+        }
         siswaSearchPanel.add(kelasCombo);
         siswaSearchPanel.add(new JLabel("Status:"));
         JComboBox<String> statusSiswaCombo = new JComboBox<>(new String[]{"Semua", "Aktif", "Lulus", "Pindah"});
@@ -1263,7 +1279,7 @@ public class DashboardAdmin extends JFrame implements ActionListener {
         siswaSearchPanel.add(btnCariSiswa);
 
         // Table siswa
-        String[] siswaColumns = {"NIS", "Nama Lengkap", "Kelas", "Tahun Ajaran", "Nominal SPP", "Status"};
+        String[] siswaColumns = {"NIS", "Nama Lengkap", "Kelas", "Tahun Ajaran", "Nominal SPP", "Status", "Login"};
         DefaultTableModel siswaTableModel = new DefaultTableModel(siswaColumns, 0) {
             @Override
             public boolean isCellEditable(int row, int column) {
@@ -1383,6 +1399,88 @@ public class DashboardAdmin extends JFrame implements ActionListener {
     }
 
     /**
+     * Method untuk membuat akun login untuk siswa terpilih
+     */
+    private void buatAkunLogin() {
+        int selectedRow = this.siswaTable.getSelectedRow();
+        if (selectedRow < 0) {
+            JOptionPane.showMessageDialog(this,
+                    "Silakan pilih siswa yang ingin dibuatkan akun login terlebih dahulu!",
+                    "Peringatan", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+
+        // Ambil NIS dari kolom pertama (index 0)
+        Object nisObj = this.siswaTable.getValueAt(selectedRow, 0);
+        if (nisObj == null) {
+            JOptionPane.showMessageDialog(this,
+                    "Data NIS tidak ditemukan pada baris yang dipilih.",
+                    "Error", JOptionPane.ERROR_MESSAGE);
+            return;
+        }
+
+        String nis = nisObj.toString().trim();
+        if (nis.isEmpty()) {
+            JOptionPane.showMessageDialog(this,
+                    "NIS tidak valid. Silakan refresh data.",
+                    "Error", JOptionPane.ERROR_MESSAGE);
+            return;
+        }
+
+        // Check if user already exists
+        if (userController.isUsernameExists(nis)) {
+            JOptionPane.showMessageDialog(this,
+                    "Akun untuk NIS " + nis + " sudah terdaftar!",
+                    "Info", JOptionPane.INFORMATION_MESSAGE);
+            return;
+        }
+
+        // Ambil data lengkap dari database
+        aplikasi.pembayaran.spp.model.Siswa selectedSiswa = siswaController.getSiswaByNis(nis);
+        if (selectedSiswa == null) {
+            JOptionPane.showMessageDialog(this,
+                    "Data siswa dengan NIS '" + nis + "' tidak ditemukan di database!",
+                    "Error", JOptionPane.ERROR_MESSAGE);
+            return;
+        }
+
+        // Create default password (can be changed later)
+        String defaultPassword = JOptionPane.showInputDialog(this,
+                "Masukkan password default untuk " + selectedSiswa.getNamaLengkap() + " (NIS: " + nis + ")\n\n" +
+                "Catatan: Minimal 6 karakter",
+                "Set Password Akun Siswa", JOptionPane.QUESTION_MESSAGE);
+
+        if (defaultPassword == null || defaultPassword.isEmpty()) {
+            return; // User cancelled
+        }
+
+        if (defaultPassword.length() < 6) {
+            JOptionPane.showMessageDialog(this,
+                    "Password harus minimal 6 karakter!",
+                    "Validasi Error", JOptionPane.ERROR_MESSAGE);
+            return;
+        }
+
+        // Create user account
+        aplikasi.pembayaran.spp.model.User newUser = new aplikasi.pembayaran.spp.model.User();
+        newUser.setUsername(nis);
+        newUser.setPassword(defaultPassword);
+        newUser.setRole("Siswa");
+        newUser.setNamaLengkap(selectedSiswa.getNamaLengkap());
+        newUser.setNoTelepon(selectedSiswa.getNoTelepon());
+        newUser.setActive(true);
+
+        boolean success = userController.registerUser(newUser, currentUser.getRole());
+        if (success) {
+            JOptionPane.showMessageDialog(this,
+                    "Akun login berhasil dibuat untuk " + selectedSiswa.getNamaLengkap() + " (NIS: " + nis + ")",
+                    "Berhasil", JOptionPane.INFORMATION_MESSAGE);
+            // Refresh the table to show updated login status
+            loadSiswaData((DefaultTableModel) this.siswaTable.getModel());
+        }
+    }
+
+    /**
      * Method untuk refresh data kelas setelah CRUD
      */
     public void refreshKelasTable() {
@@ -1458,13 +1556,16 @@ public class DashboardAdmin extends JFrame implements ActionListener {
         List<aplikasi.pembayaran.spp.model.Siswa> siswaList = siswaController.getAllSiswa();
         // Add to table
         for (aplikasi.pembayaran.spp.model.Siswa s : siswaList) {
+            // Check if user account exists for this student
+            String loginStatus = userController.isUsernameExists(s.getNis()) ? "✅ Sudah" : "❌ Belum";
             Object[] rowData = {
                     s.getNis(),
                     s.getNamaLengkap(),
                     s.getKelas(),
                     s.getTahunAjaran(),
                     String.format("Rp %.0f", s.getNominalSPP()),
-                    s.getStatusSiswa()
+                    s.getStatusSiswa(),
+                    loginStatus
             };
             tableModel.addRow(rowData);
         }
@@ -1487,13 +1588,16 @@ public class DashboardAdmin extends JFrame implements ActionListener {
             boolean matchesKelas = "Semua".equals(selectedKelas) || s.getKelas().equals(selectedKelas);
             boolean matchesStatus = "Semua".equals(selectedStatus) || s.getStatusSiswa().equals(selectedStatus);
             if (matchesSearch && matchesKelas && matchesStatus) {
+                // Check if user account exists for this student
+                String loginStatus = userController.isUsernameExists(s.getNis()) ? "✅ Sudah" : "❌ Belum";
                 Object[] rowData = {
                         s.getNis(),
                         s.getNamaLengkap(),
                         s.getKelas(),
                         s.getTahunAjaran(),
                         String.format("Rp %.0f", s.getNominalSPP()),
-                        s.getStatusSiswa()
+                        s.getStatusSiswa(),
+                        loginStatus
                 };
                 tableModel.addRow(rowData);
             }
